@@ -10,6 +10,7 @@ If address is in blacklist and in whitelist in same time, you can send to this a
 -   [Project structure](#project-structure)
 -   [How to use](#how-to-use)
 -   [Instructions](#instructions)
+-   [Notes](#notes)
 -   [Roadmdap](#roadmap)
 
 ## Project structure
@@ -165,9 +166,17 @@ If address is in blacklist and in whitelist in same time, you can send to this a
 
 17. Always you can select `Quit` option to go out from this menu.
 
+### Notes
+
+-   ✅ Works properly on wallet v4
+-   ⛔️ Works unstable on wallet v5
+-   Everytime Jetton Minter increase self TON balance on every transaction. That's why there is for admin withdraw function.
+
 ### Roadmap
 
 -   Write tlb schemes for new functions
 -   Finish tests and complete whole run of tests to green
 -   Add opportunity to choose offchain or onchain metadata
 -   Fix onchain metadata function in wrapper
+-   Add wallet v5 support
+-   Add for withdraw function in Jetton Minter to not spend TON for withdraw for rent and gas.
