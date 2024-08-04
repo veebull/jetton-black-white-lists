@@ -55,7 +55,7 @@ If address is in blacklist and in whitelist in same time, you can send to this a
 
 3.  To build all contracts at once write in terminal
     ```
-    npx blueprint build -all
+    npx blueprint build --all
     ```
 4.  You need mnemonic phrase of your wallet to interact with contract. Write in terminal to create .env
     ```
