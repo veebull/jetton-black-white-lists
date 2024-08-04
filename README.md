@@ -5,6 +5,13 @@
 This jetton allows you to set one address to blacklist and add or remove multiple addresses to whitelist.
 If address is in blacklist and in whitelist in same time, you can send to this address.
 
+## Content
+
+-   [Project structure](#project-structure)
+-   [How to use](#how-to-use)
+-   [Instructions](#instructions)
+-   [Roadmdap](#roadmap)
+
 ## Project structure
 
 -   `contracts` - source code of all the smart contracts of the project and their dependencies.
@@ -30,7 +37,7 @@ If address is in blacklist and in whitelist in same time, you can send to this a
 
 `npx blueprint create ContractName` or `yarn blueprint create ContractName`
 
-## Instrunctions
+## Instructions
 
 1.  npm i
 2.  Need to fix `@ton/blueprint` typescript library
@@ -158,7 +165,7 @@ If address is in blacklist and in whitelist in same time, you can send to this a
 
 17. Always you can select `Quit` option to go out from this menu.
 
-### TODO
+### Roadmap
 
 -   Write tlb schemes for new functions
 -   Finish tests and complete whole run of tests to green
