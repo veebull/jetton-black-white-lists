@@ -169,8 +169,24 @@ If address is in blacklist and in whitelist in same time, you can send to this a
 ### Notes
 
 -   ✅ Works properly on wallet v4
--   ⛔️ Works unstable on wallet v5
+-   ⛔️ Works unstable on wallet v5, need update of blueprint, I [commited update](https://github.com/ton-org/blueprint/compare/main...veebull:blueprint:patch-1), below there is instructions how to hardcode update yourself in blueprint module.
 -   Everytime Jetton Minter increase self TON balance on every transaction. That's why there is for admin withdraw function.
+-   To do work for wallet v5 need:
+    1. Go to [node_modules/@ton/blueprint/dist/network/send/MnemonicProvider.js](node_modules/@ton/blueprint/dist/network/send/MnemonicProvider.js) and at 28 line of code add `v5r1: ton_1.WalletContractV5R1,`
+    ```diff
+    const wallets = {
+    v1r1: ton_1.WalletContractV1R1,
+    v1r2: ton_1.WalletContractV1R2,
+    v1r3: ton_1.WalletContractV1R3,
+    v2r1: ton_1.WalletContractV2R1,
+    v2r2: ton_1.WalletContractV2R2,
+    v3r1: ton_1.WalletContractV3R1,
+    v3r2: ton_1.WalletContractV3R2,
+    v4: ton_1.WalletContractV4,
+    + v5r1: ton_1.WalletContractV5R1,
+    };
+    ```
+    2. Then when you will paste mnemonic phrase second line of code will be `WALLET_VERSION=v5r1`
 
 ### Roadmap
 

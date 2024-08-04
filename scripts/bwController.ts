@@ -12,7 +12,7 @@ import {
 } from '../wrappers/ui-utils';
 import { randomBytes } from 'crypto';
 import { SandboxContract } from '@ton/sandbox';
-import { WalletContractV4 } from '@ton/ton';
+import { WalletContractV4, WalletContractV5R1 } from '@ton/ton';
 
 let minterContract: OpenedContract<JettonMinter>;
 let walletContract: OpenedContract<JettonWallet>;
@@ -496,7 +496,7 @@ export async function run(provider: NetworkProvider) {
     //         }
     //     }
     // } while (retry);
-    const minterAddress: Address = Address.parse('EQBgnnUYaEbNxyGJYvxTYc63Xqd-qlO29yiQ7D4LgX5chjZQ');
+    const minterAddress: Address = Address.parse('EQD2VUwpv2TY-V7FEXXyXDRKnmSOrVfuUCNiFuPvU1wVknhH');
 
     minterContract = provider.open(JettonMinter.createFromAddress(minterAddress));
     userWallet = async (address: Address) =>
