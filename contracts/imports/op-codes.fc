@@ -1,0 +1,21 @@
+int op::transfer() asm "0xf8a7ea5 PUSHINT";
+int op::transfer_notification() asm "0x7362d09c PUSHINT";
+int op::internal_transfer() asm "0x178d4519 PUSHINT";
+int op::excesses() asm "0xd53276db PUSHINT";
+int op::burn() asm "0x595f07bc PUSHINT";
+int op::burn_notification() asm "0x7bdd97de PUSHINT";
+
+int op::set_blacklist() asm "0x5365744c PUSHINT";
+int op::add_to_whitelist() asm "0x41646457 PUSHINT";
+int op::remove_from_whitelist() asm "0x52656d57 PUSHINT";
+int op::check_bwlist() asm "0x5f8af156 PUSHINT";
+int op::check_bwlist_response() asm "0x43686564 PUSHINT";
+int op::decrease_balance() asm "0x43686565 PUSHINT";
+int op:withdraw_ton() asm "0x43686566 PUSHINT";
+
+;; Errors
+int error::transfer_forbidden() asm "711 PUSHINT";
+
+
+;; Minter
+int op::mint() asm "21 PUSHINT";

