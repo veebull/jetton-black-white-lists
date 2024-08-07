@@ -496,7 +496,7 @@ export async function run(provider: NetworkProvider) {
     //         }
     //     }
     // } while (retry);
-    const minterAddress: Address = Address.parse('EQD2VUwpv2TY-V7FEXXyXDRKnmSOrVfuUCNiFuPvU1wVknhH');
+    const minterAddress: Address = Address.parse('EQBiHRUyKzvq_b-pAlErpeWICqECEJz2VyqW7h-PeQuWnyDF');
 
     minterContract = provider.open(JettonMinter.createFromAddress(minterAddress));
     userWallet = async (address: Address) =>

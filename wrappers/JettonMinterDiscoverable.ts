@@ -31,12 +31,17 @@ import {
 
 import { Op } from './JettonConstants';
 
-export type jettonMinterOnChainContent = {
+export type JettonMinterOnChainContentJson = {
     name: string;
     description: string;
     symbol: string;
     decimals: number;
     image: string;
+};
+
+export type JettonMinterOnChainContent = {
+    type: 0 | 1;
+    json: JettonMinterOnChainContentJson;
 };
 
 export type JettonMinterOffChainContent = {
@@ -70,30 +75,42 @@ export function jettonMinterConfigToCell(config: JettonMinterConfig): Cell {
     );
 }
 
-export function jettonOffChainContentToCell(content: JettonMinterOffChainContent) {
-    return beginCell()
-        .storeUint(content.type, 8)
-        .storeStringTail(content.uri) //Snake logic under the hood
-        .endCell();
-}
-
-export function toTextCell(s: string): Cell {
+export function toTextCell(s: string | number): Cell {
+    if (typeof s == 'number') {
+        s = s.toString();
+    }
     return beginCell().storeUint(0, 8).storeStringTail(s).endCell();
 }
+
 export function toNumberCell(n: number): Cell {
     return beginCell().storeUint(1, 8).storeUint(n, 4).endCell();
 }
 
-export function jettonOnChainContentToCell(content: jettonMinterOnChainContent): Cell {
+// function createSnakeCell(data: string): Cell {
+//     const bytes = utf8ToBytes(data);
+//     let cell = beginCell();
+//     for (let i = 0; i < bytes.length; i++) {
+//         if (cell.bits.length > 1000) {
+//             // If current cell is almost full
+//             const nextCell = beginCell();
+//             nextCell.storeRef(cell);
+//             cell = nextCell;
+//         }
+//         cell.storeUint(bytes[i], 8);
+//     }
+//     return cell.endCell();
+// }
+
+export function jettonContentOnChainToCell(content: JettonMinterOnChainContent): Cell {
     const jettonMinterContentDict = Dictionary.empty(Dictionary.Keys.BigUint(256), Dictionary.Values.Cell())
-        .set(toSha256('name'), toTextCell(content.name))
-        .set(toSha256('description'), toTextCell(content.description))
-        .set(toSha256('symbol'), toTextCell(content.symbol))
-        .set(toSha256('decimals'), toNumberCell(content.decimals))
-        .set(toSha256('image'), toTextCell(content.image));
+        .set(toSha256('name'), toTextCell(content.json.name))
+        .set(toSha256('description'), toTextCell(content.json.description))
+        .set(toSha256('symbol'), toTextCell(content.json.symbol))
+        .set(toSha256('decimals'), toTextCell(content.json.decimals.toString()))
+        .set(toSha256('image'), toTextCell(content.json.image));
 
     return beginCell() // need to fix
-        .storeUint(0, 8)
+        .storeUint(content.type, 8)
         .storeDict(jettonMinterContentDict)
         .endCell();
 }

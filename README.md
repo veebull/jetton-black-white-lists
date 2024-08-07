@@ -63,7 +63,8 @@ If address is in blacklist and in whitelist in same time, you can send to this a
     ```
 5.  replace WALLET_MNEMONIC variable with your 24 words of seed phrase
 6.  Be sure that on this wallet there is enough money for deploying and other actions with smart contract
-7.  Upload your metadata.json file to github or another internet place. File to upload locate in path [data/jetton-metadata.json](data/jetton-metadata.json). When you upload get link with raw data only.
+7.  There are two ways to add metadata. OnChain means that data will be at blockchain, OffChain means that data will be on external server. If you want use OffChain, you can Upload your metadata.json file to github or another internet place. File to upload locate in path [data/jetton-metadata.json](data/jetton-metadata.json). When you upload get link with raw data only.
+    Or if you want use OnChain method, you can use only local file at [data/jetton-metadata.json](data/jetton-metadata.json), customize it inside file or do it late in menu.
 
     ```
     {
@@ -87,9 +88,16 @@ If address is in blacklist and in whitelist in same time, you can send to this a
     npx blueprint run deployJettonMinterDiscoverable --testnet --mnemonic --tonviewer
     ```
     3. Press enter to select admin as address of your wallet
-    4. Paste jetton-metadata.json raw link from github or your another place
-    5. Write `y` and hit enter or `n` to redo previous step
-       After that there maybe several options.
+    4. Choose `OnChain (local json file)` or `OffChain (external url link)`
+    5. If `OnChain (local json file)` selected
+        1. Get attention to current data, if you want choose, write `n` and hit enter
+        2. Then you can change admin data or metadata, like `Admin`, `Name`, `Description`, `Symbol`, `Decimals`, `Image` or just `Quit` from this menu. Just select and write what you need. Data is replaced in current metadata file.
+        3. Then if everythin Ok write `y`
+    6. If `OffChain (external url link)` selected
+        1. Paste jetton-metadata.json raw link from github or your another place and hit enter
+        2. If you want to edit Admin or Url, write `n` and then choose `Admin` or `Url` options and write what you want
+        3. Then if everything is ok, write `y`
+    7. After that there maybe several options.
         1. `Success!` You are see your minter address and link in scan. Copy address and go to the next step.
         2. `Contract is already deployed` It means that contract at your wallet with that code of jetton minter and metadata link is already deployed. If your want create new, just change the link of your metadata.json to metadata-1.json (or add another character) and paste it the next time. It is the quick way to fix that. Later I will add on chain data to play with it more better.
         3. `Fetch failed`, `error with orbs.network` and etc. Please turn off vpn, check your internet connection and try again. It is problem with network.
@@ -192,7 +200,7 @@ If address is in blacklist and in whitelist in same time, you can send to this a
 
 -   Write tlb schemes for new functions
 -   Finish tests and complete whole run of tests to green
--   Add opportunity to choose offchain or onchain metadata
--   Fix onchain metadata function in wrapper
--   Add wallet v5 support
+-   ✅ Add opportunity to choose offchain or onchain metadata
+-   ✅ Fix onchain metadata function in wrapper
+-   ⚠️ (Not Stable yet) Add wallet v5 support
 -   Add for withdraw function in Jetton Minter to not spend TON for withdraw for rent and gas.
